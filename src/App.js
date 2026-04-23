@@ -1,6 +1,6 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from "react";
 import {
-  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
+  ComposedChart, LineChart, Line, Area, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, ReferenceLine, ReferenceArea
 } from "recharts";
 import { fetchLiveData } from "./fetchData";
@@ -251,6 +251,7 @@ export default function App() {
   const [activeGroup, setActiveGroup] = useState("G1");
   const [visible, setVisible] = useState(new Set(["AVG", ...GROUPS[0].years]));
   const [logScale, setLogScale] = useState(true);
+  const [showBands, setShowBands] = useState(false);
 
   // Live data state
   const [liveRaw, setLiveRaw] = useState(RAW);
@@ -284,7 +285,21 @@ export default function App() {
     });
   };
 
-  const chartData = useMemo(() => buildChartData(groupData), [groupData]);
+  const chartDataRaw = useMemo(() => buildChartData(groupData), [groupData]);
+
+  // Augment chart data with ±1σ band from visible years
+  const chartData = useMemo(() => {
+    if (!showBands) return chartDataRaw;
+    const visYears = group.years.filter(yr => visible.has(yr));
+    if (visYears.length < 2) return chartDataRaw;
+    return chartDataRaw.map(pt => {
+      const vals = visYears.map(yr => pt[yr]).filter(v => v != null);
+      if (vals.length < 2) return pt;
+      const mean = vals.reduce((a, b) => a + b, 0) / vals.length;
+      const std = Math.sqrt(vals.reduce((sum, v) => sum + (v - mean) ** 2, 0) / vals.length);
+      return { ...pt, stdLower: mean - std, stdBand: 2 * std };
+    });
+  }, [chartDataRaw, showBands, group.years, visible]);
 
   // RSI always shows ONE line whose source depends on selection:
   //   1 individual year visible  → RSI of that year's raw prices (normal, unchanged)
@@ -578,6 +593,15 @@ export default function App() {
         }}>
           {logScale ? "LOG ✓" : "LOG"}
         </button>
+        <button onClick={() => setShowBands(b => !b)} style={{
+          background: showBands ? "rgba(148,163,184,0.12)" : "rgba(255,255,255,0.03)",
+          border: `1px solid ${showBands ? "#94a3b8" : "rgba(255,255,255,0.08)"}`,
+          color: showBands ? "#e2e8f0" : "#475569",
+          borderRadius: 4, padding: "5px 14px", cursor: "pointer",
+          fontFamily: "'Space Mono', monospace", fontSize: 11, transition: "all 0.15s",
+        }}>
+          {showBands ? "±1σ ✓" : "±1σ"}
+        </button>
         {isZoomed && (
           <button onClick={resetZoom} style={{
             background: "rgba(239,68,68,0.12)",
@@ -605,7 +629,7 @@ export default function App() {
         onMouseLeave={handleMouseUp}
       >
         <ResponsiveContainer width="100%" height={460}>
-          <LineChart
+          <ComposedChart
             data={chartData}
             syncId="btc"
             margin={{ top: 10, right: 20, left: 10, bottom: 10 }}
@@ -637,6 +661,14 @@ export default function App() {
             />
             <Tooltip position={tooltipPos} content={(props) => <CustomTooltip {...props} isLeap={GROUPS.find(g=>g.key===activeGroup)?.years.every(y=>parseInt(y)%4===0)} />} />
             <ReferenceLine y={100} stroke="rgba(255,255,255,0.18)" strokeDasharray="4 4" />
+
+            {/* ±1σ band */}
+            {showBands && (
+              <Area dataKey="stdLower" stackId="band" type="monotone" stroke="none" fill="transparent" fillOpacity={1} activeDot={false} isAnimationActive={false} />
+            )}
+            {showBands && (
+              <Area dataKey="stdBand" stackId="band" type="monotone" stroke="none" fill="rgba(250,204,20,0.08)" fillOpacity={1} activeDot={false} isAnimationActive={false} />
+            )}
 
             {/* Zoom selection highlight */}
             {dragging && refLeft != null && refRight != null && (
@@ -677,7 +709,7 @@ export default function App() {
                 isAnimationActive={false}
               />
             )}
-          </LineChart>
+          </ComposedChart>
         </ResponsiveContainer>
       </div>
 
