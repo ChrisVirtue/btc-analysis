@@ -185,9 +185,7 @@ export default function App() {
   const [refLeft, setRefLeft]   = useState(null);
   const [refRight, setRefRight] = useState(null);
   const [dragging, setDragging] = useState(false);
-  const [mainHover, setMainHover] = useState(null);
-  const [rsiHover, setRsiHover] = useState(null);
-  const [fngHover, setFngHover] = useState(null);
+  const [hoverDay, setHoverDay] = useState(null);
   const chartWrapRef = useRef(null);
 
   const group = GROUPS.find(g => g.key === activeGroup);
@@ -326,9 +324,7 @@ export default function App() {
   }, []);
 
   const handleMouseMove = useCallback((e) => {
-    if (e?.activeLabel != null && e?.activePayload) {
-      setMainHover({ label: e.activeLabel, payload: e.activePayload });
-    }
+    if (e?.activeLabel != null) setHoverDay(e.activeLabel);
     if (!dragging || !e?.activeLabel) return;
     setRefRight(e.activeLabel);
   }, [dragging]);
@@ -606,14 +602,12 @@ export default function App() {
         </ResponsiveContainer>
         {(() => {
           const isLeap = group.years.every(y => parseInt(y) % 4 === 0);
-          const label = mainHover?.label ?? chartData[chartData.length - 1]?.day ?? 1;
-          const dateStr = dayToDate(label, isLeap);
-          const pt = mainHover?.payload
-            ? mainHover.payload.filter(p => p.value != null && p.dataKey !== "stdLower" && p.dataKey !== "stdBand")
-            : group.years.concat("AVG").filter(k => visible.has(k)).map(k => {
-                const d = chartData.find(p => p.day === label);
-                return d?.[k] != null ? { dataKey: k, value: d[k], color: k === "AVG" ? AVG_COLOR : YEAR_COLORS[group.years.indexOf(k)] } : null;
-              }).filter(Boolean);
+          const day = hoverDay ?? (() => { for (let i = chartData.length - 1; i >= 0; i--) { if (group.years.some(yr => chartData[i][yr] != null)) return chartData[i].day; } return 1; })();
+          const d = chartData.find(p => p.day === day);
+          const entries = group.years.concat("AVG").filter(k => visible.has(k)).map(k => {
+            const v = d?.[k];
+            return v != null ? { key: k, value: v, color: k === "AVG" ? AVG_COLOR : YEAR_COLORS[group.years.indexOf(k)] } : null;
+          }).filter(Boolean);
           return (
             <div style={{
               position: "absolute", top: 24, left: 16, pointerEvents: "none", zIndex: 10,
@@ -622,11 +616,11 @@ export default function App() {
               fontFamily: "'Space Mono', monospace", fontSize: 11,
             }}>
               <div style={{ color: "#888", marginBottom: 6, letterSpacing: "0.1em" }}>
-                {dateStr} · DAY {label}
+                {dayToDate(day, isLeap)} · DAY {day}
               </div>
-              {pt.map(p => (
-                <div key={p.dataKey} style={{ color: p.color, marginBottom: 2, display: "flex", justifyContent: "space-between", gap: 16 }}>
-                  <span style={{ opacity: 0.8 }}>{p.dataKey}</span>
+              {entries.map(p => (
+                <div key={p.key} style={{ color: p.color, marginBottom: 2, display: "flex", justifyContent: "space-between", gap: 16 }}>
+                  <span style={{ opacity: 0.8 }}>{p.key}</span>
                   <span style={{ fontWeight: "bold" }}>{p.value >= 100 ? "+" : ""}{(p.value - 100).toFixed(1)}%</span>
                 </div>
               ))}
@@ -654,7 +648,7 @@ export default function App() {
         </div>
         {rsiOpen && <ResponsiveContainer width="100%" height={220}>
           <LineChart data={rsiChartData} syncId="btc" margin={{ top: 5, right: 20, left: 10, bottom: 10 }}
-            onMouseMove={(e) => { if (e?.activeLabel != null && e?.activePayload) setRsiHover({ label: e.activeLabel, payload: e.activePayload }); }}>
+            onMouseMove={(e) => { if (e?.activeLabel != null) setHoverDay(e.activeLabel); }}>
             <CartesianGrid stroke="rgba(255,255,255,0.04)" strokeDasharray="3 3" />
             <XAxis
               dataKey="day"
@@ -691,10 +685,8 @@ export default function App() {
         </ResponsiveContainer>}
         {rsiOpen && (() => {
           const isLeap = group.years.every(y => parseInt(y) % 4 === 0);
-          const label = rsiHover?.label ?? rsiChartData.filter(p => p.RSI != null).pop()?.day ?? 1;
-          const dateStr = dayToDate(label, isLeap);
-          const rsiVal = rsiHover?.payload?.find(p => p.value != null)?.value
-            ?? rsiChartData.find(p => p.day === label)?.RSI;
+          const day = hoverDay ?? rsiChartData.filter(p => p.RSI != null).pop()?.day ?? 1;
+          const rsiVal = rsiChartData.find(p => p.day === day)?.RSI;
           if (rsiVal == null) return null;
           const lvl = rsiVal >= 70 ? "#ef4444" : rsiVal <= 30 ? "#4ade80" : rsiColor;
           return (
@@ -704,7 +696,7 @@ export default function App() {
               borderRadius: 8, padding: "8px 12px",
               fontFamily: "'Space Mono', monospace", fontSize: 11,
             }}>
-              <div style={{ color: "#888", marginBottom: 5, letterSpacing: "0.1em" }}>RSI · {dateStr}</div>
+              <div style={{ color: "#888", marginBottom: 5, letterSpacing: "0.1em" }}>RSI · {dayToDate(day, isLeap)}</div>
               <div style={{ color: lvl, display: "flex", justifyContent: "space-between", gap: 14 }}>
                 <span style={{ opacity: 0.8 }}>RSI</span>
                 <span style={{ fontWeight: "bold" }}>{rsiVal.toFixed(1)}</span>
@@ -733,7 +725,7 @@ export default function App() {
         </div>
         {fngOpen && <ResponsiveContainer width="100%" height={200}>
           <LineChart data={fngChartData} syncId="btc" margin={{ top: 5, right: 20, left: 10, bottom: 10 }}
-            onMouseMove={(e) => { if (e?.activeLabel != null && e?.activePayload) setFngHover({ label: e.activeLabel, payload: e.activePayload }); }}>
+            onMouseMove={(e) => { if (e?.activeLabel != null) setHoverDay(e.activeLabel); }}>
             <CartesianGrid stroke="rgba(255,255,255,0.04)" strokeDasharray="3 3" />
             <XAxis
               dataKey="day"
@@ -781,14 +773,12 @@ export default function App() {
         </ResponsiveContainer>}
         {fngOpen && (() => {
           const isLeap = group.years.every(y => parseInt(y) % 4 === 0);
-          const label = fngHover?.label ?? fngChartData.filter(p => group.years.some(yr => p[yr] != null)).pop()?.day ?? 1;
-          const dateStr = dayToDate(label, isLeap);
-          const entries = fngHover?.payload
-            ? fngHover.payload.filter(p => p.value != null)
-            : group.years.filter(yr => visible.has(yr)).map(yr => {
-                const d = fngChartData.find(p => p.day === label);
-                return d?.[yr] != null ? { dataKey: yr, value: d[yr], color: YEAR_COLORS[group.years.indexOf(yr)] } : null;
-              }).filter(Boolean);
+          const day = hoverDay ?? fngChartData.filter(p => group.years.some(yr => p[yr] != null)).pop()?.day ?? 1;
+          const d = fngChartData.find(p => p.day === day);
+          const entries = group.years.filter(yr => visible.has(yr)).map(yr => {
+            const v = d?.[yr];
+            return v != null ? { key: yr, value: v, color: YEAR_COLORS[group.years.indexOf(yr)] } : null;
+          }).filter(Boolean);
           if (!entries.length) return null;
           return (
             <div style={{
@@ -797,12 +787,12 @@ export default function App() {
               borderRadius: 8, padding: "8px 12px",
               fontFamily: "'Space Mono', monospace", fontSize: 11,
             }}>
-              <div style={{ color: "#888", marginBottom: 5, letterSpacing: "0.1em" }}>F&G · {dateStr}</div>
+              <div style={{ color: "#888", marginBottom: 5, letterSpacing: "0.1em" }}>F&G · {dayToDate(day, isLeap)}</div>
               {entries.map(p => {
                 const sent = fngSentiment(p.value);
                 return (
-                  <div key={p.dataKey} style={{ color: sent.color, marginBottom: 2, display: "flex", justifyContent: "space-between", gap: 14 }}>
-                    <span style={{ opacity: 0.8 }}>{p.dataKey}</span>
+                  <div key={p.key} style={{ color: sent.color, marginBottom: 2, display: "flex", justifyContent: "space-between", gap: 14 }}>
+                    <span style={{ opacity: 0.8 }}>{p.key}</span>
                     <span style={{ fontWeight: "bold" }}>{Math.round(p.value)} <span style={{ fontSize: 9, opacity: 0.7 }}>{sent.label}</span></span>
                   </div>
                 );
