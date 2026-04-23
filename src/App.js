@@ -552,7 +552,7 @@ export default function App() {
               width={52}
               allowDataOverflow
             />
-            <Tooltip content={() => null} />
+            <Tooltip content={() => null} wrapperStyle={{ display: "none" }} cursor={{ stroke: "rgba(255,255,255,0.2)" }} />
             <ReferenceLine y={100} stroke="rgba(255,255,255,0.18)" strokeDasharray="4 4" />
 
             {/* ±1σ band */}
@@ -674,7 +674,7 @@ export default function App() {
               tickLine={false}
               width={52}
             />
-            <Tooltip content={() => null} />
+            <Tooltip content={() => null} wrapperStyle={{ display: "none" }} cursor={{ stroke: "rgba(255,255,255,0.2)" }} />
             <ReferenceLine y={70} stroke="rgba(239,68,68,0.25)" strokeDasharray="3 3" />
             <ReferenceLine y={50} stroke="rgba(255,255,255,0.4)" strokeDasharray="4 4" />
             <ReferenceLine y={30} stroke="rgba(74,222,128,0.25)" strokeDasharray="3 3" />
@@ -753,7 +753,7 @@ export default function App() {
               tickLine={false}
               width={52}
             />
-            <Tooltip content={() => null} />
+            <Tooltip content={() => null} wrapperStyle={{ display: "none" }} cursor={{ stroke: "rgba(255,255,255,0.2)" }} />
             {/* Sentiment zone bands */}
             <ReferenceArea y1={0}  y2={25}  fill="rgba(248,113,113,0.07)" ifOverflow="visible" />
             <ReferenceArea y1={25} y2={46}  fill="rgba(251,146,60,0.05)"  ifOverflow="visible" />
