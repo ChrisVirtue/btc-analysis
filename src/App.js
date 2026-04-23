@@ -84,74 +84,6 @@ function buildChartData(groupData) {
   });
 }
 
-// Wilder's RSI(14) from a sparse {doy_str: indexedVal} dict
-function calcRSI(yearData, period = 14) {
-  const entries = Object.entries(yearData)
-    .map(([doy, val]) => ({ doy: parseInt(doy), val }))
-    .sort((a, b) => a.doy - b.doy);
-  if (entries.length < period + 1) return {};
-  const closes = entries.map(e => e.val);
-  const doys   = entries.map(e => e.doy);
-  const gains = [], losses = [];
-  for (let i = 1; i < closes.length; i++) {
-    const d = closes[i] - closes[i - 1];
-    gains.push(d > 0 ? d : 0);
-    losses.push(d < 0 ? -d : 0);
-  }
-  let avgGain = gains.slice(0, period).reduce((a, b) => a + b, 0) / period;
-  let avgLoss = losses.slice(0, period).reduce((a, b) => a + b, 0) / period;
-  const toRSI = (ag, al) =>
-    al === 0 ? 100 : parseFloat((100 - 100 / (1 + ag / al)).toFixed(2));
-  const rsiMap = {};
-  rsiMap[doys[period]] = toRSI(avgGain, avgLoss);
-  for (let i = period; i < gains.length; i++) {
-    avgGain = (avgGain * (period - 1) + gains[i]) / period;
-    avgLoss = (avgLoss * (period - 1) + losses[i]) / period;
-    rsiMap[doys[i + 1]] = toRSI(avgGain, avgLoss);
-  }
-  return rsiMap;
-}
-
-// Linearly interpolate a sparse {doy_str: val} yearData dict to a dense {day_int: val} map
-function interpolateYearFull(yearData) {
-  const known = {};
-  Object.entries(yearData).forEach(([d, v]) => { known[+d] = v; });
-  const sorted = Object.keys(known).map(Number).sort((a, b) => a - b);
-  if (!sorted.length) return {};
-  const out = {};
-  for (let day = 1; day <= 366; day++) {
-    if (known[day] !== undefined) { out[day] = known[day]; continue; }
-    const prev = sorted.filter(d => d < day);
-    const next = sorted.filter(d => d > day);
-    if (prev.length && next.length) {
-      const d0 = prev[prev.length - 1], d1 = next[0];
-      out[day] = known[d0] + (known[d1] - known[d0]) * (day - d0) / (d1 - d0);
-    } else if (prev.length) { out[day] = known[prev[prev.length - 1]]; }
-      else if (next.length) { out[day] = known[next[0]]; }
-  }
-  return out;
-}
-
-// Map a rolling-return % to a colour on a dark background
-function returnToColor(pct, period) {
-  if (pct == null) return "rgba(255,255,255,0.04)";
-  const cap = period <= 30 ? 25 : period <= 60 ? 45 : 70;
-  const t = Math.max(-1, Math.min(1, pct / cap));
-  const intensity = Math.abs(t);
-  if (intensity < 0.04) return "rgba(255,255,255,0.07)";
-  if (t > 0) {
-    const r = Math.round(20 * (1 - intensity));
-    const g = Math.round(80 + intensity * 142);
-    const b = Math.round(50 * (1 - intensity));
-    return `rgba(${r},${g},${b},${(0.4 + intensity * 0.6).toFixed(2)})`;
-  } else {
-    const r = Math.round(80 + intensity * 159);
-    const g = Math.round(20 * (1 - intensity));
-    const b = Math.round(20 * (1 - intensity));
-    return `rgba(${r},${g},${b},${(0.4 + intensity * 0.6).toFixed(2)})`;
-  }
-}
-
 function fngSentiment(v) {
   if (v >= 76) return { label: "EXTREME GREED", color: "#4ade80" };
   if (v >= 56) return { label: "GREED",         color: "#86efac" };
@@ -215,80 +147,6 @@ export default function App() {
   }, [chartDataRaw, showBands, group.years]);
 
   // RSI always shows ONE line whose source depends on selection:
-  //   1 individual year visible  → RSI of that year's raw prices (normal, unchanged)
-  //   2+ individual years visible → interpolate each year, RSI per year, average the RSIs
-  //                                  (RSI is 0-100 bounded so averaging = equal weight)
-  //   only AVG visible            → RSI computed from the pre-computed AVG price series
-  const { rsiChartData, rsiColor } = useMemo(() => {
-    const visYears = group.years.filter(yr => visible.has(yr));
-    const onlyAvg  = visYears.length === 0 && visible.has("AVG");
-
-    // Linearly interpolate a sparse {doy_str: val} dict to a dense {day_int: val} object
-    const interpolate = (yearData) => {
-      const known = {};
-      Object.entries(yearData).forEach(([d, v]) => { known[+d] = v; });
-      const sorted = Object.keys(known).map(Number).sort((a,b)=>a-b);
-      const out = {};
-      for (let day = 1; day <= 366; day++) {
-        if (known[day] !== undefined) { out[day] = known[day]; continue; }
-        const prev = sorted.filter(d => d < day);
-        const next = sorted.filter(d => d > day);
-        if (prev.length && next.length) {
-          const d0 = prev[prev.length-1], d1 = next[0];
-          out[day] = known[d0] + (known[d1]-known[d0])*(day-d0)/(d1-d0);
-        } else if (prev.length) { out[day] = known[prev[prev.length-1]]; }
-          else if (next.length) { out[day] = known[next[0]]; }
-      }
-      return out;
-    };
-
-    // Helper: compute RSI from a dense {day_int: val} object
-    const rsiFromDense = (dense) => {
-      const strDict = Object.fromEntries(
-        Object.entries(dense).map(([d, v]) => [String(d), v])
-      );
-      return calcRSI(strDict);
-    };
-
-    let color = AVG_COLOR;
-
-    if (onlyAvg) {
-      // AVG price series is already smooth — interpolate then compute one RSI
-      const rsi = rsiFromDense(interpolate(groupData["AVG"] || {}));
-      const data = Array.from({ length: 366 }, (_, i) => ({
-        day: i + 1, RSI: rsi[i + 1] ?? null,
-      }));
-      return { rsiChartData: data, rsiColor: color };
-
-    } else if (visYears.length === 1) {
-      // Single year: raw sparse data → normal RSI, no interpolation needed
-      const rsi = calcRSI(groupData[visYears[0]] || {});
-      color = YEAR_COLORS[group.years.indexOf(visYears[0])];
-      const data = Array.from({ length: 366 }, (_, i) => ({
-        day: i + 1, RSI: rsi[i + 1] ?? null,
-      }));
-      return { rsiChartData: data, rsiColor: color };
-
-    } else if (visYears.length >= 2) {
-      // Multi-year: interpolate each → compute RSI per year → average RSIs
-      // Averaging RSI values (not prices) = true equal weighting since RSI is 0-100 for all years
-      const rsiMaps = visYears.map(yr => rsiFromDense(interpolate(groupData[yr] || {})));
-      const data = Array.from({ length: 366 }, (_, i) => {
-        const day = i + 1;
-        const vals = rsiMaps.map(r => r[day]).filter(v => v != null);
-        return {
-          day,
-          RSI: vals.length ? parseFloat((vals.reduce((a,b)=>a+b,0)/vals.length).toFixed(2)) : null,
-        };
-      });
-      return { rsiChartData: data, rsiColor: color };
-
-    } else {
-      // Nothing visible
-      return { rsiChartData: Array.from({length:366},(_,i)=>({day:i+1,RSI:null})), rsiColor: AVG_COLOR };
-    }
-  }, [groupData, group.years, visible]);
-
   // Y domain — only consider visible series within current x zoom
   const allVals = useMemo(() => {
     const [xMin, xMax] = xDomain;
@@ -329,7 +187,6 @@ export default function App() {
     setRefRight(e.activeLabel);
   }, [dragging]);
 
-  const rsiWrapRef = useRef(null);
 
   // F&G chart data — individual year lines + AVG of visible years
   const fngChartData = useMemo(() => {
@@ -348,33 +205,7 @@ export default function App() {
     });
   }, [activeGroup, group.years, visible, liveFng]);
 
-  // Rolling return heatmap: 52 weekly samples × N years
-  // MONTH_START_WEEKS maps each month to the nearest week index (1-based)
-  const [heatmapPeriod, setHeatmapPeriod] = useState(90);
-  const [heatmapOpen, setHeatmapOpen] = useState(true);
-
-  const HEATMAP_WEEKS = 52;
-  const HEATMAP_MONTH_WEEKS = [1, 5, 9, 13, 18, 22, 26, 31, 35, 39, 44, 48];
-
-  const heatmapData = useMemo(() => {
-    const result = {};
-    group.years.forEach(yr => {
-      if (!groupData[yr]) return;
-      const interp = interpolateYearFull(groupData[yr]);
-      result[yr] = {};
-      for (let w = 1; w <= HEATMAP_WEEKS; w++) {
-        const dayEnd   = Math.min(w * 7, 365);
-        const dayStart = Math.max(1, dayEnd - heatmapPeriod);
-        if (interp[dayEnd] != null && interp[dayStart] != null && interp[dayStart] > 0) {
-          result[yr][w] = ((interp[dayEnd] / interp[dayStart]) - 1) * 100;
-        }
-      }
-    });
-    return result;
-  }, [groupData, group.years, heatmapPeriod]);
-
   const fngWrapRef = useRef(null);
-  const [rsiOpen, setRsiOpen] = useState(true);
   const [fngOpen, setFngOpen] = useState(true);
 
   const handleMouseUp = useCallback(() => {
@@ -630,83 +461,6 @@ export default function App() {
         })()}
       </div>
 
-      {/* RSI Chart */}
-      <div ref={rsiWrapRef} style={{ background: "rgba(255,255,255,0.02)", borderRadius: 12, border: "1px solid rgba(255,255,255,0.06)", padding: rsiOpen ? "12px 8px 4px" : "10px 8px", marginTop: 8, position: "relative" }}
->
-        <div
-          onClick={() => setRsiOpen(o => !o)}
-          style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", marginLeft: 60, marginBottom: rsiOpen ? 2 : 0 }}
-        >
-          <span style={{ fontSize: 10, color: "#64748b", letterSpacing: "0.12em" }}>
-            RSI (14) &nbsp;
-            <span style={{ color: "rgba(239,68,68,0.6)" }}>── 70</span>
-            &nbsp;&nbsp;
-            <span style={{ color: "rgba(74,222,128,0.6)" }}>── 30</span>
-          </span>
-          <span style={{ fontSize: 10, color: "#475569", marginLeft: "auto", marginRight: 12, userSelect: "none" }}>
-            {rsiOpen ? "▲" : "▼"}
-          </span>
-        </div>
-        {rsiOpen && <ResponsiveContainer width="100%" height={220}>
-          <LineChart data={rsiChartData} syncId="btc" margin={{ top: 5, right: 20, left: 10, bottom: 10 }}
-            onMouseMove={(e) => { if (e?.activeLabel != null) setHoverDay(e.activeLabel); }}>
-            <CartesianGrid stroke="rgba(255,255,255,0.04)" strokeDasharray="3 3" />
-            <XAxis
-              dataKey="day"
-              type="number"
-              domain={xDomain}
-              ticks={MONTH_TICKS.filter(t => t >= xDomain[0] && t <= xDomain[1])}
-              tickFormatter={dayToMonth}
-              tick={{ fill: "#64748b", fontSize: 10, fontFamily: "'Space Mono', monospace" }}
-              axisLine={{ stroke: "rgba(255,255,255,0.08)" }}
-              tickLine={false}
-            />
-            <YAxis
-              domain={[20, 80]}
-              ticks={[20, 30, 50, 70, 80]}
-              tick={{ fill: "#64748b", fontSize: 10, fontFamily: "'Space Mono', monospace" }}
-              axisLine={false}
-              tickLine={false}
-              width={52}
-            />
-            <Tooltip content={() => null} wrapperStyle={{ display: "none" }} cursor={{ stroke: "rgba(255,255,255,0.2)" }} />
-            <ReferenceLine y={70} stroke="rgba(239,68,68,0.25)" strokeDasharray="3 3" />
-            <ReferenceLine y={50} stroke="rgba(255,255,255,0.4)" strokeDasharray="4 4" />
-            <ReferenceLine y={30} stroke="rgba(74,222,128,0.25)" strokeDasharray="3 3" />
-            <Line
-              type="monotone"
-              dataKey="RSI"
-              stroke={rsiColor}
-              strokeWidth={2}
-              dot={false}
-              connectNulls={true}
-              isAnimationActive={false}
-            />
-          </LineChart>
-        </ResponsiveContainer>}
-        {rsiOpen && (() => {
-          const isLeap = group.years.every(y => parseInt(y) % 4 === 0);
-          const day = hoverDay ?? rsiChartData.filter(p => p.RSI != null).pop()?.day ?? 1;
-          const rsiVal = rsiChartData.find(p => p.day === day)?.RSI;
-          if (rsiVal == null) return null;
-          const lvl = rsiVal >= 70 ? "#ef4444" : rsiVal <= 30 ? "#4ade80" : rsiColor;
-          return (
-            <div style={{
-              position: "absolute", top: 12, right: 16, pointerEvents: "none", zIndex: 10,
-              background: "rgba(10,10,20,0.95)", border: "1px solid rgba(255,255,255,0.1)",
-              borderRadius: 8, padding: "8px 12px",
-              fontFamily: "'Space Mono', monospace", fontSize: 11,
-            }}>
-              <div style={{ color: "#888", marginBottom: 5, letterSpacing: "0.1em" }}>RSI · {dayToDate(day, isLeap)}</div>
-              <div style={{ color: lvl, display: "flex", justifyContent: "space-between", gap: 14 }}>
-                <span style={{ opacity: 0.8 }}>RSI</span>
-                <span style={{ fontWeight: "bold" }}>{rsiVal.toFixed(1)}</span>
-              </div>
-            </div>
-          );
-        })()}
-      </div>
-
       {/* F&G Panel */}
       <div ref={fngWrapRef} style={{ background: "rgba(255,255,255,0.02)", borderRadius: 12, border: "1px solid rgba(255,255,255,0.06)", padding: fngOpen ? "12px 8px 4px" : "10px 8px", marginTop: 8, position: "relative" }}
 >
@@ -802,101 +556,6 @@ export default function App() {
             </div>
           );
         })()}
-      </div>
-
-      {/* Rolling Return Heatmap */}
-      <div style={{ background: "rgba(255,255,255,0.02)", borderRadius: 12, border: "1px solid rgba(255,255,255,0.06)", padding: heatmapOpen ? "12px 12px 10px" : "10px 12px", marginTop: 8 }}>
-        {/* Header */}
-        <div
-          onClick={() => setHeatmapOpen(o => !o)}
-          style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", marginBottom: heatmapOpen ? 10 : 0 }}
-        >
-          <span style={{ fontSize: 10, color: "#64748b", letterSpacing: "0.12em", fontFamily: "'Space Mono', monospace" }}>
-            ROLLING RETURN
-          </span>
-          <div style={{ display: "flex", gap: 4 }} onClick={e => e.stopPropagation()}>
-            {[30, 60, 90].map((p) => {
-              const active = heatmapPeriod === p;
-              return (
-                <button key={p} onClick={(e) => { e.stopPropagation(); setHeatmapPeriod(p); }} style={{
-                  background: active ? "rgba(250,204,20,0.12)" : "rgba(255,255,255,0.04)",
-                  border: `1px solid ${active ? "rgba(250,204,20,0.5)" : "rgba(255,255,255,0.1)"}`,
-                  color: active ? "#facc15" : "#64748b",
-                  borderRadius: 4, padding: "2px 8px", cursor: "pointer",
-                  fontFamily: "'Space Mono', monospace", fontSize: 9, letterSpacing: "0.06em",
-                }}>
-                  {p}D
-                </button>
-              );
-            })}
-          </div>
-          <span style={{ fontSize: 10, color: "#475569", marginLeft: "auto", userSelect: "none" }}>
-            {heatmapOpen ? "▲" : "▼"}
-          </span>
-        </div>
-
-        {heatmapOpen && (
-          <div>
-            {/* Month label row */}
-            <div style={{ display: "flex", marginLeft: 44, marginBottom: 3 }}>
-              {Array.from({ length: HEATMAP_WEEKS }, (_, i) => {
-                const w = i + 1;
-                const mIdx = HEATMAP_MONTH_WEEKS.indexOf(w);
-                return (
-                  <div key={w} style={{ flex: 1, fontSize: 8, color: "#475569",
-                    fontFamily: "'Space Mono', monospace", textAlign: "center" }}>
-                    {mIdx >= 0 ? MONTHS[mIdx][0] : ""}
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* Year rows */}
-            {group.years.map((yr, yi) => (
-              <div key={yr} style={{ display: "flex", alignItems: "center", marginBottom: 2 }}>
-                <span style={{
-                  width: 40, fontSize: 9, color: visible.has(yr) ? YEAR_COLORS[yi] : "#334155",
-                  fontFamily: "'Space Mono', monospace", flexShrink: 0, textAlign: "right",
-                  paddingRight: 6, fontWeight: 700,
-                }}>
-                  {yr}
-                </span>
-                <div style={{ display: "flex", flex: 1, gap: 1.5 }}>
-                  {Array.from({ length: HEATMAP_WEEKS }, (_, i) => {
-                    const w = i + 1;
-                    const val = heatmapData[yr]?.[w];
-                    const sign = val != null ? (val >= 0 ? "+" : "") : "";
-                    return (
-                      <div
-                        key={w}
-                        title={val != null
-                          ? `${yr}  Week ${w}  ${sign}${val.toFixed(1)}%  (${heatmapPeriod}d rolling)`
-                          : `${yr}  Week ${w}  no data`}
-                        style={{
-                          flex: 1, height: 18, borderRadius: 2,
-                          background: returnToColor(val, heatmapPeriod),
-                          opacity: visible.has(yr) ? 1 : 0,
-                          cursor: "default",
-                          transition: "opacity 0.15s",
-                        }}
-                      />
-                    );
-                  })}
-                </div>
-              </div>
-            ))}
-
-            {/* Colour legend */}
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8, marginLeft: 44 }}>
-              <span style={{ fontSize: 8, color: "#475569", fontFamily: "'Space Mono', monospace" }}>LOSS</span>
-              <div style={{
-                flex: 1, height: 6, borderRadius: 3,
-                background: "linear-gradient(to right, #ef4444, rgba(255,255,255,0.1) 50%, #4ade80)",
-              }} />
-              <span style={{ fontSize: 8, color: "#475569", fontFamily: "'Space Mono', monospace" }}>GAIN</span>
-            </div>
-          </div>
-        )}
       </div>
 
       {/* Footer */}
