@@ -401,42 +401,22 @@ export default function App() {
     setRefRight(e.activeLabel);
   }, [dragging]);
 
-  // Position tooltip in whichever horizontal half has more empty space,
-  // and vertically away from the cluster of lines (opposite side of their avg y)
+  // Fixed tooltip position: top-right corner of chart
   const tooltipPos = useMemo(() => {
     if (!cursorCoord) return undefined;
     const w = chartWrapRef.current?.offsetWidth ?? 800;
-    const YAXIS_W = 62;   // left margin (10) + YAxis width (52)
-    const MARGIN_R = 20;
-    const plotW = w - YAXIS_W - MARGIN_R;
-    const TOOLTIP_W = 178;
-    const TOOLTIP_H = 150;
-    const CHART_H = 460;
-    const flipLeft = cursorCoord.x > plotW * 0.5;
-    return {
-      x: flipLeft ? cursorCoord.x - TOOLTIP_W - 14 : cursorCoord.x + 14,
-      y: Math.max(8, Math.min(CHART_H - TOOLTIP_H - 8, cursorCoord.y - TOOLTIP_H / 2)),
-    };
+    return { x: w - 230, y: 16 };
   }, [cursorCoord]);
 
   // RSI panel: position tooltip above the line when RSI > 50 (upper half), below when < 50
   const [rsiCursorCoord, setRsiCursorCoord] = useState(null);
   const rsiWrapRef = useRef(null);
 
+  // Fixed tooltip position: top-right corner of RSI panel
   const rsiTooltipPos = useMemo(() => {
     if (!rsiCursorCoord) return undefined;
-    const TOOLTIP_W = 168;
-    const TOOLTIP_H = 72;
-    const RSI_H = 220;
-    // Horizontal: same left/right flip as main chart
-    const flipLeft = rsiCursorCoord.x >= TOOLTIP_W + 14;  // left unless too close to edge
-    const x = flipLeft ? rsiCursorCoord.x - TOOLTIP_W - 14 : rsiCursorCoord.x + 14;
-    // Vertical: cursor in upper half of RSI panel → tooltip below; lower half → above
-    const isUpperHalf = rsiCursorCoord.y < RSI_H / 2;
-    const y = isUpperHalf
-      ? rsiCursorCoord.y + 12
-      : rsiCursorCoord.y - TOOLTIP_H - 12;
-    return { x, y: Math.max(4, Math.min(RSI_H - TOOLTIP_H - 4, y)) };
+    const w = rsiWrapRef.current?.offsetWidth ?? 800;
+    return { x: w - 210, y: 8 };
   }, [rsiCursorCoord]);
 
   // F&G chart data — individual year lines + AVG of visible years
@@ -486,16 +466,11 @@ export default function App() {
   const [rsiOpen, setRsiOpen] = useState(true);
   const [fngOpen, setFngOpen] = useState(true);
 
+  // Fixed tooltip position: top-right corner of F&G panel
   const fngTooltipPos = useMemo(() => {
     if (!fngCursorCoord) return undefined;
-    const TOOLTIP_W = 200;
-    const TOOLTIP_H = 72;
-    const FNG_H = 200;
-    const flipLeft = fngCursorCoord.x >= TOOLTIP_W + 14;
-    const x = flipLeft ? fngCursorCoord.x - TOOLTIP_W - 14 : fngCursorCoord.x + 14;
-    const isUpperHalf = fngCursorCoord.y < FNG_H / 2;
-    const y = isUpperHalf ? fngCursorCoord.y + 12 : fngCursorCoord.y - TOOLTIP_H - 12;
-    return { x, y: Math.max(4, Math.min(FNG_H - TOOLTIP_H - 4, y)) };
+    const w = fngWrapRef.current?.offsetWidth ?? 800;
+    return { x: w - 250, y: 8 };
   }, [fngCursorCoord]);
 
   const handleMouseUp = useCallback(() => {
