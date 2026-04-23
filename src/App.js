@@ -454,7 +454,7 @@ export default function App() {
       pt.AVG = count > 0 ? parseFloat((sum / count).toFixed(1)) : null;
       return pt;
     });
-  }, [activeGroup, group.years, visible]);
+  }, [activeGroup, group.years, visible, liveFng]);
 
   // Rolling return heatmap: 52 weekly samples × N years
   // MONTH_START_WEEKS maps each month to the nearest week index (1-based)
