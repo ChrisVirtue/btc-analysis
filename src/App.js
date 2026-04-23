@@ -152,63 +152,6 @@ function returnToColor(pct, period) {
   }
 }
 
-function CustomTooltip({ active, payload, label, isLeap }) {
-  if (!active || !payload?.length) return null;
-  const dateStr = dayToDate(label, isLeap);
-  const entries = payload.filter(p => p.value != null);
-  if (!entries.length) return null;
-  return (
-    <div style={{
-      background: "rgba(10,10,20,0.95)",
-      border: "1px solid rgba(255,255,255,0.1)",
-      borderRadius: 8,
-      padding: "10px 14px",
-      fontFamily: "'Space Mono', monospace",
-      fontSize: 11,
-    }}>
-      <div style={{ color: "#888", marginBottom: 6, letterSpacing: "0.1em" }}>
-        {dateStr} · DAY {label}
-      </div>
-      {entries.map(p => (
-        <div key={p.dataKey} style={{ color: p.color, marginBottom: 2, display: "flex", justifyContent: "space-between", gap: 16 }}>
-          <span style={{ opacity: 0.8 }}>{p.dataKey === "AVG" ? "AVG" : p.dataKey}</span>
-          <span style={{ fontWeight: "bold" }}>{p.value >= 100 ? "+" : ""}{(p.value - 100).toFixed(1)}%</span>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function RSITooltip({ active, payload, label, isLeap }) {
-  if (!active || !payload?.length) return null;
-  const dateStr = dayToDate(label, isLeap);
-  const entries = payload.filter(p => p.value != null);
-  if (!entries.length) return null;
-  return (
-    <div style={{
-      background: "rgba(10,10,20,0.95)",
-      border: "1px solid rgba(255,255,255,0.1)",
-      borderRadius: 8,
-      padding: "8px 12px",
-      fontFamily: "'Space Mono', monospace",
-      fontSize: 11,
-    }}>
-      <div style={{ color: "#888", marginBottom: 5, letterSpacing: "0.1em" }}>
-        RSI · {dateStr}
-      </div>
-      {entries.map(p => {
-        const lvl = p.value >= 70 ? "#ef4444" : p.value <= 30 ? "#4ade80" : p.color;
-        return (
-          <div key={p.dataKey} style={{ color: lvl, marginBottom: 2, display: "flex", justifyContent: "space-between", gap: 14 }}>
-            <span style={{ opacity: 0.8 }}>{p.dataKey === "AVG" ? "AVG" : p.dataKey}</span>
-            <span style={{ fontWeight: "bold" }}>{p.value.toFixed(1)}</span>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
 function fngSentiment(v) {
   if (v >= 76) return { label: "EXTREME GREED", color: "#4ade80" };
   if (v >= 56) return { label: "GREED",         color: "#86efac" };
@@ -217,35 +160,6 @@ function fngSentiment(v) {
   return               { label: "EXTREME FEAR",  color: "#f87171" };
 }
 
-function FngTooltip({ active, payload, label, isLeap }) {
-  if (!active || !payload?.length) return null;
-  const dateStr = dayToDate(label, isLeap);
-  const entries = payload.filter(p => p.value != null);
-  if (!entries.length) return null;
-  return (
-    <div style={{
-      background: "rgba(10,10,20,0.95)",
-      border: "1px solid rgba(255,255,255,0.1)",
-      borderRadius: 8,
-      padding: "8px 12px",
-      fontFamily: "'Space Mono', monospace",
-      fontSize: 11,
-    }}>
-      <div style={{ color: "#888", marginBottom: 5, letterSpacing: "0.1em" }}>
-        F&G · {dateStr}
-      </div>
-      {entries.map(p => {
-        const { label: sl, color: sc } = fngSentiment(p.value);
-        return (
-          <div key={p.dataKey} style={{ color: sc, marginBottom: 2, display: "flex", justifyContent: "space-between", gap: 14 }}>
-            <span style={{ opacity: 0.8 }}>{p.dataKey === "AVG" ? "AVG" : p.dataKey}</span>
-            <span style={{ fontWeight: "bold" }}>{Math.round(p.value)} <span style={{ fontSize: 9, opacity: 0.7 }}>{sl}</span></span>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
 
 export default function App() {
   const [activeGroup, setActiveGroup] = useState("G1");
@@ -271,7 +185,9 @@ export default function App() {
   const [refLeft, setRefLeft]   = useState(null);
   const [refRight, setRefRight] = useState(null);
   const [dragging, setDragging] = useState(false);
-  const [cursorCoord, setCursorCoord] = useState(null);
+  const [mainHover, setMainHover] = useState(null);
+  const [rsiHover, setRsiHover] = useState(null);
+  const [fngHover, setFngHover] = useState(null);
   const chartWrapRef = useRef(null);
 
   const group = GROUPS.find(g => g.key === activeGroup);
@@ -411,28 +327,14 @@ export default function App() {
   }, []);
 
   const handleMouseMove = useCallback((e) => {
-    if (e?.activeCoordinate) setCursorCoord(e.activeCoordinate);
+    if (e?.activeLabel != null && e?.activePayload) {
+      setMainHover({ label: e.activeLabel, payload: e.activePayload });
+    }
     if (!dragging || !e?.activeLabel) return;
     setRefRight(e.activeLabel);
   }, [dragging]);
 
-  // Fixed tooltip position: top-right corner of chart
-  const tooltipPos = useMemo(() => {
-    if (!cursorCoord) return undefined;
-    const w = chartWrapRef.current?.offsetWidth ?? 800;
-    return { x: w - 230, y: 16 };
-  }, [cursorCoord]);
-
-  // RSI panel: position tooltip above the line when RSI > 50 (upper half), below when < 50
-  const [rsiCursorCoord, setRsiCursorCoord] = useState(null);
   const rsiWrapRef = useRef(null);
-
-  // Fixed tooltip position: top-right corner of RSI panel
-  const rsiTooltipPos = useMemo(() => {
-    if (!rsiCursorCoord) return undefined;
-    const w = rsiWrapRef.current?.offsetWidth ?? 800;
-    return { x: w - 210, y: 8 };
-  }, [rsiCursorCoord]);
 
   // F&G chart data — individual year lines + AVG of visible years
   const fngChartData = useMemo(() => {
@@ -476,17 +378,9 @@ export default function App() {
     return result;
   }, [groupData, group.years, heatmapPeriod]);
 
-  const [fngCursorCoord, setFngCursorCoord] = useState(null);
   const fngWrapRef = useRef(null);
   const [rsiOpen, setRsiOpen] = useState(true);
   const [fngOpen, setFngOpen] = useState(true);
-
-  // Fixed tooltip position: top-right corner of F&G panel
-  const fngTooltipPos = useMemo(() => {
-    if (!fngCursorCoord) return undefined;
-    const w = fngWrapRef.current?.offsetWidth ?? 800;
-    return { x: w - 250, y: 8 };
-  }, [fngCursorCoord]);
 
   const handleMouseUp = useCallback(() => {
     if (dragging && refLeft != null && refRight != null) {
@@ -625,8 +519,8 @@ export default function App() {
       {/* Chart */}
       <div
         ref={chartWrapRef}
-        style={{ background: "rgba(255,255,255,0.02)", borderRadius: 12, border: "1px solid rgba(255,255,255,0.06)", padding: "16px 8px 8px", userSelect: "none" }}
-        onMouseLeave={handleMouseUp}
+        style={{ background: "rgba(255,255,255,0.02)", borderRadius: 12, border: "1px solid rgba(255,255,255,0.06)", padding: "16px 8px 8px", userSelect: "none", position: "relative" }}
+        onMouseLeave={() => { handleMouseUp(); setMainHover(null); }}
       >
         <ResponsiveContainer width="100%" height={460}>
           <ComposedChart
@@ -659,7 +553,7 @@ export default function App() {
               width={52}
               allowDataOverflow
             />
-            <Tooltip position={tooltipPos} content={(props) => <CustomTooltip {...props} isLeap={GROUPS.find(g=>g.key===activeGroup)?.years.every(y=>parseInt(y)%4===0)} />} />
+            <Tooltip content={() => null} />
             <ReferenceLine y={100} stroke="rgba(255,255,255,0.18)" strokeDasharray="4 4" />
 
             {/* ±1σ band */}
@@ -711,10 +605,35 @@ export default function App() {
             )}
           </ComposedChart>
         </ResponsiveContainer>
+        {mainHover && (() => {
+          const isLeap = group.years.every(y => parseInt(y) % 4 === 0);
+          const dateStr = dayToDate(mainHover.label, isLeap);
+          const entries = mainHover.payload.filter(p => p.value != null && p.dataKey !== "stdLower" && p.dataKey !== "stdBand");
+          if (!entries.length) return null;
+          return (
+            <div style={{
+              position: "absolute", top: 24, left: 16, pointerEvents: "none", zIndex: 10,
+              background: "rgba(10,10,20,0.95)", border: "1px solid rgba(255,255,255,0.1)",
+              borderRadius: 8, padding: "10px 14px",
+              fontFamily: "'Space Mono', monospace", fontSize: 11,
+            }}>
+              <div style={{ color: "#888", marginBottom: 6, letterSpacing: "0.1em" }}>
+                {dateStr} · DAY {mainHover.label}
+              </div>
+              {entries.map(p => (
+                <div key={p.dataKey} style={{ color: p.color, marginBottom: 2, display: "flex", justifyContent: "space-between", gap: 16 }}>
+                  <span style={{ opacity: 0.8 }}>{p.dataKey}</span>
+                  <span style={{ fontWeight: "bold" }}>{p.value >= 100 ? "+" : ""}{(p.value - 100).toFixed(1)}%</span>
+                </div>
+              ))}
+            </div>
+          );
+        })()}
       </div>
 
       {/* RSI Chart */}
-      <div ref={rsiWrapRef} style={{ background: "rgba(255,255,255,0.02)", borderRadius: 12, border: "1px solid rgba(255,255,255,0.06)", padding: rsiOpen ? "12px 8px 4px" : "10px 8px", marginTop: 8 }}>
+      <div ref={rsiWrapRef} style={{ background: "rgba(255,255,255,0.02)", borderRadius: 12, border: "1px solid rgba(255,255,255,0.06)", padding: rsiOpen ? "12px 8px 4px" : "10px 8px", marginTop: 8, position: "relative" }}
+        onMouseLeave={() => setRsiHover(null)}>
         <div
           onClick={() => setRsiOpen(o => !o)}
           style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", marginLeft: 60, marginBottom: rsiOpen ? 2 : 0 }}
@@ -731,7 +650,7 @@ export default function App() {
         </div>
         {rsiOpen && <ResponsiveContainer width="100%" height={220}>
           <LineChart data={rsiChartData} syncId="btc" margin={{ top: 5, right: 20, left: 10, bottom: 10 }}
-            onMouseMove={(e) => { if (e?.activeCoordinate) setRsiCursorCoord(e.activeCoordinate); }}>
+            onMouseMove={(e) => { if (e?.activeLabel != null && e?.activePayload) setRsiHover({ label: e.activeLabel, payload: e.activePayload }); }}>
             <CartesianGrid stroke="rgba(255,255,255,0.04)" strokeDasharray="3 3" />
             <XAxis
               dataKey="day"
@@ -751,7 +670,7 @@ export default function App() {
               tickLine={false}
               width={52}
             />
-            <Tooltip position={rsiTooltipPos} content={(props) => <RSITooltip {...props} isLeap={GROUPS.find(g=>g.key===activeGroup)?.years.every(y=>parseInt(y)%4===0)} />} />
+            <Tooltip content={() => null} />
             <ReferenceLine y={70} stroke="rgba(239,68,68,0.25)" strokeDasharray="3 3" />
             <ReferenceLine y={50} stroke="rgba(255,255,255,0.4)" strokeDasharray="4 4" />
             <ReferenceLine y={30} stroke="rgba(74,222,128,0.25)" strokeDasharray="3 3" />
@@ -766,10 +685,36 @@ export default function App() {
             />
           </LineChart>
         </ResponsiveContainer>}
+        {rsiHover && (() => {
+          const isLeap = group.years.every(y => parseInt(y) % 4 === 0);
+          const dateStr = dayToDate(rsiHover.label, isLeap);
+          const entries = rsiHover.payload.filter(p => p.value != null);
+          if (!entries.length) return null;
+          return (
+            <div style={{
+              position: "absolute", top: 12, left: 16, pointerEvents: "none", zIndex: 10,
+              background: "rgba(10,10,20,0.95)", border: "1px solid rgba(255,255,255,0.1)",
+              borderRadius: 8, padding: "8px 12px",
+              fontFamily: "'Space Mono', monospace", fontSize: 11,
+            }}>
+              <div style={{ color: "#888", marginBottom: 5, letterSpacing: "0.1em" }}>RSI · {dateStr}</div>
+              {entries.map(p => {
+                const lvl = p.value >= 70 ? "#ef4444" : p.value <= 30 ? "#4ade80" : p.color;
+                return (
+                  <div key={p.dataKey} style={{ color: lvl, marginBottom: 2, display: "flex", justifyContent: "space-between", gap: 14 }}>
+                    <span style={{ opacity: 0.8 }}>{p.dataKey}</span>
+                    <span style={{ fontWeight: "bold" }}>{p.value.toFixed(1)}</span>
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })()}
       </div>
 
       {/* F&G Panel */}
-      <div ref={fngWrapRef} style={{ background: "rgba(255,255,255,0.02)", borderRadius: 12, border: "1px solid rgba(255,255,255,0.06)", padding: fngOpen ? "12px 8px 4px" : "10px 8px", marginTop: 8 }}>
+      <div ref={fngWrapRef} style={{ background: "rgba(255,255,255,0.02)", borderRadius: 12, border: "1px solid rgba(255,255,255,0.06)", padding: fngOpen ? "12px 8px 4px" : "10px 8px", marginTop: 8, position: "relative" }}
+        onMouseLeave={() => setFngHover(null)}>
         <div
           onClick={() => setFngOpen(o => !o)}
           style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", marginLeft: 60, marginBottom: fngOpen ? 2 : 0 }}
@@ -786,7 +731,7 @@ export default function App() {
         </div>
         {fngOpen && <ResponsiveContainer width="100%" height={200}>
           <LineChart data={fngChartData} syncId="btc" margin={{ top: 5, right: 20, left: 10, bottom: 10 }}
-            onMouseMove={(e) => { if (e?.activeCoordinate) setFngCursorCoord(e.activeCoordinate); }}>
+            onMouseMove={(e) => { if (e?.activeLabel != null && e?.activePayload) setFngHover({ label: e.activeLabel, payload: e.activePayload }); }}>
             <CartesianGrid stroke="rgba(255,255,255,0.04)" strokeDasharray="3 3" />
             <XAxis
               dataKey="day"
@@ -806,7 +751,7 @@ export default function App() {
               tickLine={false}
               width={52}
             />
-            <Tooltip position={fngTooltipPos} content={(props) => <FngTooltip {...props} isLeap={GROUPS.find(g=>g.key===activeGroup)?.years.every(y=>parseInt(y)%4===0)} />} />
+            <Tooltip content={() => null} />
             {/* Sentiment zone bands */}
             <ReferenceArea y1={0}  y2={25}  fill="rgba(248,113,113,0.07)" ifOverflow="visible" />
             <ReferenceArea y1={25} y2={46}  fill="rgba(251,146,60,0.05)"  ifOverflow="visible" />
@@ -832,6 +777,31 @@ export default function App() {
             )}
           </LineChart>
         </ResponsiveContainer>}
+        {fngHover && (() => {
+          const isLeap = group.years.every(y => parseInt(y) % 4 === 0);
+          const dateStr = dayToDate(fngHover.label, isLeap);
+          const entries = fngHover.payload.filter(p => p.value != null);
+          if (!entries.length) return null;
+          return (
+            <div style={{
+              position: "absolute", top: 12, left: 16, pointerEvents: "none", zIndex: 10,
+              background: "rgba(10,10,20,0.95)", border: "1px solid rgba(255,255,255,0.1)",
+              borderRadius: 8, padding: "8px 12px",
+              fontFamily: "'Space Mono', monospace", fontSize: 11,
+            }}>
+              <div style={{ color: "#888", marginBottom: 5, letterSpacing: "0.1em" }}>F&G · {dateStr}</div>
+              {entries.map(p => {
+                const sent = fngSentiment(p.value);
+                return (
+                  <div key={p.dataKey} style={{ color: sent.color, marginBottom: 2, display: "flex", justifyContent: "space-between", gap: 14 }}>
+                    <span style={{ opacity: 0.8 }}>{p.dataKey}</span>
+                    <span style={{ fontWeight: "bold" }}>{Math.round(p.value)} <span style={{ fontSize: 9, opacity: 0.7 }}>{sent.label}</span></span>
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })()}
       </div>
 
       {/* Rolling Return Heatmap */}
