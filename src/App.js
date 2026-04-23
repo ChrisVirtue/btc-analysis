@@ -162,10 +162,10 @@ function fngSentiment(v) {
 
 
 export default function App() {
-  const [activeGroup, setActiveGroup] = useState("G1");
-  const [visible, setVisible] = useState(new Set(["AVG", ...GROUPS[0].years]));
+  const [activeGroup, setActiveGroup] = useState("G4");
+  const [visible, setVisible] = useState(new Set(["AVG", ...GROUPS[3].years]));
   const [logScale, setLogScale] = useState(true);
-  const [showBands, setShowBands] = useState(false);
+  const [showBands, setShowBands] = useState(true);
 
   // Live data state
   const [liveRaw, setLiveRaw] = useState(RAW);
