@@ -203,19 +203,18 @@ export default function App() {
 
   const chartDataRaw = useMemo(() => buildChartData(groupData), [groupData]);
 
-  // Augment chart data with ±1σ band from visible years
+  // Augment chart data with ±1σ band from all 4 years in the group
   const chartData = useMemo(() => {
     if (!showBands) return chartDataRaw;
-    const visYears = group.years.filter(yr => visible.has(yr));
-    if (visYears.length < 2) return chartDataRaw;
+    if (group.years.length < 2) return chartDataRaw;
     return chartDataRaw.map(pt => {
-      const vals = visYears.map(yr => pt[yr]).filter(v => v != null);
+      const vals = group.years.map(yr => pt[yr]).filter(v => v != null);
       if (vals.length < 2) return pt;
       const mean = vals.reduce((a, b) => a + b, 0) / vals.length;
       const std = Math.sqrt(vals.reduce((sum, v) => sum + (v - mean) ** 2, 0) / vals.length);
       return { ...pt, stdLower: mean - std, stdBand: 2 * std };
     });
-  }, [chartDataRaw, showBands, group.years, visible]);
+  }, [chartDataRaw, showBands, group.years]);
 
   // RSI always shows ONE line whose source depends on selection:
   //   1 individual year visible  → RSI of that year's raw prices (normal, unchanged)
@@ -520,7 +519,7 @@ export default function App() {
       <div
         ref={chartWrapRef}
         style={{ background: "rgba(255,255,255,0.02)", borderRadius: 12, border: "1px solid rgba(255,255,255,0.06)", padding: "16px 8px 8px", userSelect: "none", position: "relative" }}
-        onMouseLeave={() => { handleMouseUp(); setMainHover(null); }}
+        onMouseLeave={handleMouseUp}
       >
         <ResponsiveContainer width="100%" height={460}>
           <ComposedChart
@@ -605,11 +604,16 @@ export default function App() {
             )}
           </ComposedChart>
         </ResponsiveContainer>
-        {mainHover && (() => {
+        {(() => {
           const isLeap = group.years.every(y => parseInt(y) % 4 === 0);
-          const dateStr = dayToDate(mainHover.label, isLeap);
-          const entries = mainHover.payload.filter(p => p.value != null && p.dataKey !== "stdLower" && p.dataKey !== "stdBand");
-          if (!entries.length) return null;
+          const label = mainHover?.label ?? chartData[chartData.length - 1]?.day ?? 1;
+          const dateStr = dayToDate(label, isLeap);
+          const pt = mainHover?.payload
+            ? mainHover.payload.filter(p => p.value != null && p.dataKey !== "stdLower" && p.dataKey !== "stdBand")
+            : group.years.concat("AVG").filter(k => visible.has(k)).map(k => {
+                const d = chartData.find(p => p.day === label);
+                return d?.[k] != null ? { dataKey: k, value: d[k], color: k === "AVG" ? AVG_COLOR : YEAR_COLORS[group.years.indexOf(k)] } : null;
+              }).filter(Boolean);
           return (
             <div style={{
               position: "absolute", top: 24, left: 16, pointerEvents: "none", zIndex: 10,
@@ -618,9 +622,9 @@ export default function App() {
               fontFamily: "'Space Mono', monospace", fontSize: 11,
             }}>
               <div style={{ color: "#888", marginBottom: 6, letterSpacing: "0.1em" }}>
-                {dateStr} · DAY {mainHover.label}
+                {dateStr} · DAY {label}
               </div>
-              {entries.map(p => (
+              {pt.map(p => (
                 <div key={p.dataKey} style={{ color: p.color, marginBottom: 2, display: "flex", justifyContent: "space-between", gap: 16 }}>
                   <span style={{ opacity: 0.8 }}>{p.dataKey}</span>
                   <span style={{ fontWeight: "bold" }}>{p.value >= 100 ? "+" : ""}{(p.value - 100).toFixed(1)}%</span>
@@ -633,7 +637,7 @@ export default function App() {
 
       {/* RSI Chart */}
       <div ref={rsiWrapRef} style={{ background: "rgba(255,255,255,0.02)", borderRadius: 12, border: "1px solid rgba(255,255,255,0.06)", padding: rsiOpen ? "12px 8px 4px" : "10px 8px", marginTop: 8, position: "relative" }}
-        onMouseLeave={() => setRsiHover(null)}>
+>
         <div
           onClick={() => setRsiOpen(o => !o)}
           style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", marginLeft: 60, marginBottom: rsiOpen ? 2 : 0 }}
@@ -685,11 +689,14 @@ export default function App() {
             />
           </LineChart>
         </ResponsiveContainer>}
-        {rsiHover && (() => {
+        {rsiOpen && (() => {
           const isLeap = group.years.every(y => parseInt(y) % 4 === 0);
-          const dateStr = dayToDate(rsiHover.label, isLeap);
-          const entries = rsiHover.payload.filter(p => p.value != null);
-          if (!entries.length) return null;
+          const label = rsiHover?.label ?? rsiChartData.filter(p => p.RSI != null).pop()?.day ?? 1;
+          const dateStr = dayToDate(label, isLeap);
+          const rsiVal = rsiHover?.payload?.find(p => p.value != null)?.value
+            ?? rsiChartData.find(p => p.day === label)?.RSI;
+          if (rsiVal == null) return null;
+          const lvl = rsiVal >= 70 ? "#ef4444" : rsiVal <= 30 ? "#4ade80" : rsiColor;
           return (
             <div style={{
               position: "absolute", top: 12, left: 16, pointerEvents: "none", zIndex: 10,
@@ -698,15 +705,10 @@ export default function App() {
               fontFamily: "'Space Mono', monospace", fontSize: 11,
             }}>
               <div style={{ color: "#888", marginBottom: 5, letterSpacing: "0.1em" }}>RSI · {dateStr}</div>
-              {entries.map(p => {
-                const lvl = p.value >= 70 ? "#ef4444" : p.value <= 30 ? "#4ade80" : p.color;
-                return (
-                  <div key={p.dataKey} style={{ color: lvl, marginBottom: 2, display: "flex", justifyContent: "space-between", gap: 14 }}>
-                    <span style={{ opacity: 0.8 }}>{p.dataKey}</span>
-                    <span style={{ fontWeight: "bold" }}>{p.value.toFixed(1)}</span>
-                  </div>
-                );
-              })}
+              <div style={{ color: lvl, display: "flex", justifyContent: "space-between", gap: 14 }}>
+                <span style={{ opacity: 0.8 }}>RSI</span>
+                <span style={{ fontWeight: "bold" }}>{rsiVal.toFixed(1)}</span>
+              </div>
             </div>
           );
         })()}
@@ -714,7 +716,7 @@ export default function App() {
 
       {/* F&G Panel */}
       <div ref={fngWrapRef} style={{ background: "rgba(255,255,255,0.02)", borderRadius: 12, border: "1px solid rgba(255,255,255,0.06)", padding: fngOpen ? "12px 8px 4px" : "10px 8px", marginTop: 8, position: "relative" }}
-        onMouseLeave={() => setFngHover(null)}>
+>
         <div
           onClick={() => setFngOpen(o => !o)}
           style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", marginLeft: 60, marginBottom: fngOpen ? 2 : 0 }}
@@ -777,10 +779,16 @@ export default function App() {
             )}
           </LineChart>
         </ResponsiveContainer>}
-        {fngHover && (() => {
+        {fngOpen && (() => {
           const isLeap = group.years.every(y => parseInt(y) % 4 === 0);
-          const dateStr = dayToDate(fngHover.label, isLeap);
-          const entries = fngHover.payload.filter(p => p.value != null);
+          const label = fngHover?.label ?? fngChartData.filter(p => group.years.some(yr => p[yr] != null)).pop()?.day ?? 1;
+          const dateStr = dayToDate(label, isLeap);
+          const entries = fngHover?.payload
+            ? fngHover.payload.filter(p => p.value != null)
+            : group.years.filter(yr => visible.has(yr)).map(yr => {
+                const d = fngChartData.find(p => p.day === label);
+                return d?.[yr] != null ? { dataKey: yr, value: d[yr], color: YEAR_COLORS[group.years.indexOf(yr)] } : null;
+              }).filter(Boolean);
           if (!entries.length) return null;
           return (
             <div style={{
