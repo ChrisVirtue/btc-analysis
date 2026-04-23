@@ -610,7 +610,7 @@ export default function App() {
           }).filter(Boolean);
           return (
             <div style={{
-              position: "absolute", top: 24, left: 16, pointerEvents: "none", zIndex: 10,
+              position: "absolute", top: 24, right: 16, pointerEvents: "none", zIndex: 10,
               background: "rgba(10,10,20,0.95)", border: "1px solid rgba(255,255,255,0.1)",
               borderRadius: 8, padding: "10px 14px",
               fontFamily: "'Space Mono', monospace", fontSize: 11,
@@ -691,7 +691,7 @@ export default function App() {
           const lvl = rsiVal >= 70 ? "#ef4444" : rsiVal <= 30 ? "#4ade80" : rsiColor;
           return (
             <div style={{
-              position: "absolute", top: 12, left: 16, pointerEvents: "none", zIndex: 10,
+              position: "absolute", top: 12, right: 16, pointerEvents: "none", zIndex: 10,
               background: "rgba(10,10,20,0.95)", border: "1px solid rgba(255,255,255,0.1)",
               borderRadius: 8, padding: "8px 12px",
               fontFamily: "'Space Mono', monospace", fontSize: 11,
@@ -782,7 +782,7 @@ export default function App() {
           if (!entries.length) return null;
           return (
             <div style={{
-              position: "absolute", top: 12, left: 16, pointerEvents: "none", zIndex: 10,
+              position: "absolute", top: 12, right: 16, pointerEvents: "none", zIndex: 10,
               background: "rgba(10,10,20,0.95)", border: "1px solid rgba(255,255,255,0.1)",
               borderRadius: 8, padding: "8px 12px",
               fontFamily: "'Space Mono', monospace", fontSize: 11,
