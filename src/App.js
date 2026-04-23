@@ -570,21 +570,22 @@ export default function App() {
               />
             )}
 
-            {group.years.map((yr, i) =>
-              visible.has(yr) && (
+            {group.years.map((yr, i) => {
+              const isCurrent = yr === String(new Date().getFullYear());
+              return visible.has(yr) && (
                 <Line
                   key={yr}
                   type="monotone"
                   dataKey={yr}
                   stroke={YEAR_COLORS[i]}
-                  strokeWidth={1.8}
+                  strokeWidth={isCurrent ? 3 : 1.5}
                   dot={false}
                   connectNulls={true}
-                  strokeOpacity={0.85}
+                  strokeOpacity={isCurrent ? 1 : 0.65}
                   isAnimationActive={false}
                 />
-              )
-            )}
+              );
+            })}
             {visible.has("AVG") && (
               <Line
                 key="AVG"
@@ -754,21 +755,22 @@ export default function App() {
             <ReferenceLine y={50} stroke="rgba(255,255,255,0.2)" strokeDasharray="4 4" />
             <ReferenceLine y={25} stroke="rgba(248,113,113,0.35)" strokeDasharray="3 3" />
             <ReferenceLine y={75} stroke="rgba(74,222,128,0.35)"  strokeDasharray="3 3" />
-            {group.years.map((yr, i) =>
-              visible.has(yr) && (liveFng[activeGroup]?.[yr]) && (
+            {group.years.map((yr, i) => {
+              const isCurrent = yr === String(new Date().getFullYear());
+              return visible.has(yr) && (liveFng[activeGroup]?.[yr]) && (
                 <Line
                   key={yr}
                   type="monotone"
                   dataKey={yr}
                   stroke={YEAR_COLORS[i]}
-                  strokeWidth={1.5}
+                  strokeWidth={isCurrent ? 2.5 : 1.2}
                   dot={false}
                   connectNulls={false}
-                  strokeOpacity={0.8}
+                  strokeOpacity={isCurrent ? 1 : 0.6}
                   isAnimationActive={false}
                 />
-              )
-            )}
+              );
+            })}
           </LineChart>
         </ResponsiveContainer>}
         {fngOpen && (() => {
